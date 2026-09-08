@@ -4,10 +4,7 @@ from snowflake.snowpark.functions import col
 
 # Write directly to the app
 st.title("Come Play the Chain Game!")
-st.write(
-  """Welcome to my project! If it's your first time playing, please click the button below.
-  """
-)
+st.header("Welcome to my project! If it's your first time playing, please click the button below.")
 
 with st.expander("It's my first time"):
     st.write("My name is Brandon. I designed this game primarily as a portfolio piece to showcase my skills in data engineering and data science.")
@@ -25,25 +22,32 @@ st.markdown("**Tip:** Check the sidebar for current freight market rates!")
 cnx = st.connection("snowflake")
 session = cnx.session()
 
-# Use an interactive slider to get user input
-hifives_val = st.slider(
-  "Number of high-fives in Q3",
-  min_value=0,
-  max_value=90,
-  value=60,
-  help="Use this to enter the number of high-fives you gave in Q3",
-)
+st.header("Contract Selection")
 
-#  Create an example dataframe
-#  Note: this is just some dummy data, but you can easily connect to your Snowflake data
-#  It is also possible to query data using raw SQL using session.sql() e.g. session.sql("select * from table")
-created_dataframe = session.create_dataframe(
-  [[50, 25, "Q1"], [20, 35, "Q2"], [hifives_val, 30, "Q3"]],
-  schema=["HIGH_FIVES", "FIST_BUMPS", "QUARTER"],
-)
+# Replace each list with a Snowflake query, e.g.
+# session.table("CONTRACTS").filter(col("MODE") == "SEA").select("LANE").to_pandas()["LANE"].tolist()
+sea_options = []
+rail_options = []
+truck_options = []
+
+sea_col, rail_col, truck_col = st.columns(3)
+
+with sea_col:
+    st.subheader("Sea")
+    sea_contract = st.selectbox("Sea contract", sea_options, index=None, placeholder="Select a sea contract")
+
+with rail_col:
+    st.subheader("Rail")
+    rail_contract = st.selectbox("Rail contract", rail_options, index=None, placeholder="Select a rail contract")
+
+with truck_col:
+    st.subheader("Truck")
+    truck_contract = st.selectbox("Truck contract", truck_options, index=None, placeholder="Select a truck contract")
+
+st.header("Build Routes")
 
 # Execute the query and convert it into a Pandas dataframe
-queried_data = created_dataframe.to_pandas()
+# queried_data = created_dataframe.to_pandas()
 
 # Create a simple bar chart
 # See docs.streamlit.io for more types of charts
