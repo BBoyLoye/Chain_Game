@@ -1,0 +1,18 @@
+definition_version: 2
+entities:
+  streamlit_app:
+    type: streamlit
+    main_file: Chain Game SiS.py
+    artifacts:
+      - pyproject.toml
+      - Chain Game SiS.py
+      - .streamlit/config.toml
+    identifier:
+      database: CHAIN_GAME_PROD
+      schema: PUBLIC
+      name: UNTITLED
+    title: Chain Game
+    query_warehouse: SNOWFLAKE_LEARNING_WH
+    compute_pool: SYSTEM_COMPUTE_POOL_CPU
+    run_mode: SpcsOnly
+    execute_as: OWNER
