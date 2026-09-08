@@ -1,6 +1,6 @@
 # Import python packages
 import streamlit as st
-import os
+from snowflake.snowpark.functions import col
 
 # Write directly to the app
 st.title("Come Play the Chain Game!")
@@ -12,16 +12,8 @@ st.write(
   """
 )
 
-st.markdown("""
-- :page_with_curl: [Streamlit open source documentation](https://docs.streamlit.io)
-- :snowflake: [Streamlit in Snowflake documentation](https://docs.snowflake.com/en/developer-guide/streamlit/about-streamlit)
-- :books: [Demo repo with templates](https://github.com/Snowflake-Labs/snowflake-demo-streamlit)
-- :memo: [Streamlit in Snowflake release notes](https://docs.snowflake.com/en/release-notes/streamlit-in-snowflake)
-""")
-
-# Create a database connection to Snowflake
-conn = st.connection("snowflake", ttl=os.getenv("SNOWFLAKE_CONNECTION_TTL"))
-session = conn.session()
+cnx = st.connection("snowflake")
+session = cnx.session()
 
 # Use an interactive slider to get user input
 hifives_val = st.slider(
