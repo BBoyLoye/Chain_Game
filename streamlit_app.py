@@ -13,7 +13,6 @@ with st.expander("It's my first time"):
     st.write("As a supply chain manager, you have two tools at your disposal:")
     st.write("    1. You can make contracts with freight brokers to transport goods. You should make contracts to save money over paying 'spot rates,' which are often higher. But beware! You risk contracts being bloated, and forcing you to pay for freight services you won't need if demand goes down.")
     st.write("    2. Once your contracts are locked in, you'll be able to navigate REAL TIME spot rates for ocean, rail, and truck cargo to get products where they belong")
-    st.write("")
     st.write("Your goal is to get products to where they belong for as little cost as possible. Good luck!")
     
 # You can also add formatting, bold text, or markdown links inside
@@ -34,7 +33,11 @@ sea_col, rail_col, truck_col = st.columns(3)
 
 with sea_col:
     st.subheader("Sea")
-    sea_contract = st.selectbox("Sea contract", sea_options, index=None, placeholder="Select a sea contract")
+    df_sea = cnx.query("""SELECT DISTINCT quantity 
+      FROM CHAIN_GAME_DEV.MARTS.FCT_CONTRACT_OPTIONS_SEA 
+      ORDER BY quantity ASC;""")
+    sea_contract = st.selectbox("Sea contract", df_sea["quantity"].tolist(), index=None, placeholder="Select a sea contract")
+
 
 with rail_col:
     st.subheader("Rail")
