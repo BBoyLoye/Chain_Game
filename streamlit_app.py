@@ -36,7 +36,7 @@ with sea_col:
     df_sea = cnx.query("""SELECT DISTINCT quantity 
       FROM CHAIN_GAME_DEV.MARTS.FCT_CONTRACT_OPTIONS_SEA 
       ORDER BY quantity ASC;""")
-    sea_contract = st.selectbox("Sea contract", df_sea["quantity"].tolist(), index=None, placeholder="Select a sea contract")
+    sea_contract = st.selectbox("Sea contract", df_sea["QUANTITY"].tolist(), index=None, placeholder="Select a sea contract")
 
 
 with rail_col:
@@ -48,16 +48,4 @@ with truck_col:
     truck_contract = st.selectbox("Truck contract", truck_options, index=None, placeholder="Select a truck contract")
 
 st.header("Build Routes")
-
-# Execute the query and convert it into a Pandas dataframe
-# queried_data = created_dataframe.to_pandas()
-
-# Create a simple bar chart
-# See docs.streamlit.io for more types of charts
-st.subheader("Number of high-fives")
-st.bar_chart(data=queried_data, x="QUARTER", y="HIGH_FIVES")
-
-st.subheader("Underlying data")
-st.dataframe(queried_data, use_container_width=True)
-
 st.write(f"Streamlit Version: {st.__version__}")
