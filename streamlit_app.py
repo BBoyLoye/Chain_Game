@@ -39,7 +39,7 @@ with sea_col:
     df_sea_price = cnx.query("""SELECT DISTINCT price_per_container 
       FROM CHAIN_GAME_DEV.MARTS.FCT_CONTRACT_OPTIONS_SEA 
       ORDER BY price ASC;""")
-    df_contract_qty = df_sea["QUANTITY"].tolist()
+    df_contract_qty = df_sea_qty["QUANTITY"].tolist()
     df_contract_price = df_sea_price["PRICE_PER_CONTAINER"].tolist()
     sea_contract = st.selectbox("Sea contract", f"{df_contract_qty} containers for ${df_contract_price} per container", index=None, placeholder="Select a sea contract")
 
