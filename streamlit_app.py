@@ -1,6 +1,6 @@
 # Import python packages
 import streamlit as st
-from snowflake.snowpark.functions import col
+# from snowflake.snowpark.functions import col
 
 # Write directly to the app
 st.title("Come Play the Chain Game!")
@@ -33,15 +33,27 @@ sea_col, rail_col, truck_col = st.columns(3)
 
 with sea_col:
     st.subheader("Sea")
-    df_sea_qty = cnx.query("""SELECT DISTINCT quantity 
-      FROM CHAIN_GAME_DEV.MARTS.FCT_CONTRACT_OPTIONS_SEA 
-      ORDER BY quantity ASC;""")
-    df_sea_price = cnx.query("""SELECT DISTINCT price_per_container 
-      FROM CHAIN_GAME_DEV.MARTS.FCT_CONTRACT_OPTIONS_SEA 
-      ORDER BY price ASC;""")
-    df_contract_qty = df_sea_qty["QUANTITY"].tolist()
-    df_contract_price = df_sea_price["PRICE_PER_CONTAINER"].tolist()
-    sea_contract = st.selectbox("Sea contract", f"{df_contract_qty} containers for ${df_contract_price} per container", index=None, placeholder="Select a sea contract")
+    
+    # 1. Fetch options together (fixing ORDER BY column name)
+    df_sea = cnx.query("""
+        SELECT DISTINCT quantity, price_per_container 
+        FROM CHAIN_GAME_DEV.MARTS.FCT_CONTRACT_OPTIONS_SEA 
+        ORDER BY quantity ASC, price_per_container ASC;
+    """)
+    
+    # 2. Build a list of formatted strings for each row
+    sea_options = [
+        f"{row['QUANTITY']} containers for ${row['PRICE_PER_CONTAINER']:.2f} per container"
+        for _, row in df_sea.iterrows()
+    ]
+    
+    # 3. Pass the formatted list to selectbox
+    sea_contract = st.selectbox(
+        "Sea contract", 
+        options=sea_options, 
+        index=None, 
+        placeholder="Select a sea contract"
+    )
 
 
 with rail_col:
