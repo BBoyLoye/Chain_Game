@@ -23,11 +23,6 @@ session = cnx.session()
 
 st.header("Contract Selection")
 
-rail_options = []
-truck_options = []
-
-st.subheader("Sea")
-
 @st.cache_data(ttl=600)
 def load_sea_contract_options():
     return cnx.query("""
@@ -50,128 +45,6 @@ def load_sea_contract_options():
             sea.quantity,
             sea.price_per_container
     """)
-
-sea_contract_data = load_sea_contract_options()
-sea_offers = sea_contract_data.to_dict("records")
-sea_origins = sorted(
-    {offer["ORIGIN_CITY"] for offer in sea_offers if offer["ORIGIN_CITY"]}
-)
-sea_destinations = sorted(
-    {offer["DESTINATION_CITY"] for offer in sea_offers if offer["DESTINATION_CITY"]}
-)
-
-if "sea_contract_rows" not in st.session_state:
-    st.session_state.sea_contract_rows = [0]
-    st.session_state.next_sea_contract_row = 1
-
-def selected_routes(excluded_row_id):
-    routes = set()
-    for contract_row_id in st.session_state.sea_contract_rows:
-        if contract_row_id == excluded_row_id:
-            continue
-        origin = st.session_state.get(f"sea_from_{contract_row_id}")
-        destination = st.session_state.get(f"sea_to_{contract_row_id}")
-        if origin and destination:
-            routes.add((origin, destination))
-    return routes
-
-sea_contracts = []
-
-for row_index, row_id in enumerate(list(st.session_state.sea_contract_rows)):
-    from_key = f"sea_from_{row_id}"
-    to_key = f"sea_to_{row_id}"
-    offer_key = f"sea_for_{row_id}"
-    routes_in_other_rows = selected_routes(row_id)
-
-    selected_destination = st.session_state.get(to_key)
-    available_origins = [
-        origin
-        for origin in sea_origins
-        if origin != selected_destination
-        and (origin, selected_destination) not in routes_in_other_rows
-    ]
-    if st.session_state.get(from_key) not in available_origins:
-        st.session_state.pop(from_key, None)
-
-    row_columns = st.columns([3, 3, 4, 1, 1])
-
-    with row_columns[0]:
-        selected_origin = st.selectbox(
-            "From",
-            available_origins,
-            index=None,
-            placeholder="Select origin",
-            key=from_key,
-        )
-
-    available_destinations = [
-        destination
-        for destination in sea_destinations
-        if destination != selected_origin
-        and (selected_origin, destination) not in routes_in_other_rows
-    ]
-    if st.session_state.get(to_key) not in available_destinations:
-        st.session_state.pop(to_key, None)
-
-    with row_columns[1]:
-        selected_destination = st.selectbox(
-            "To",
-            available_destinations,
-            index=None,
-            placeholder="Select destination",
-            key=to_key,
-        )
-
-    matching_offers = [
-        offer
-        for offer in sea_offers
-        if offer["ORIGIN_CITY"] == selected_origin
-        and offer["DESTINATION_CITY"] == selected_destination
-    ]
-    offer_by_id = {
-        offer["SEA_CONTRACT_ID"]: offer for offer in matching_offers
-    }
-    if st.session_state.get(offer_key) not in offer_by_id:
-        st.session_state.pop(offer_key, None)
-
-    with row_columns[2]:
-        selected_offer_id = st.selectbox(
-            "For",
-            list(offer_by_id),
-            index=None,
-            placeholder="Select terms",
-            format_func=lambda contract_id: (
-                f"{offer_by_id[contract_id]['QUANTITY']} containers for "
-                f"${offer_by_id[contract_id]['PRICE_PER_CONTAINER']:.2f} "
-                "per container"
-            ),
-            key=offer_key,
-        )
-
-    with row_columns[3]:
-        if st.button("＋", key=f"add_sea_contract_{row_id}", help="Add contract"):
-            new_row_id = st.session_state.next_sea_contract_row
-            st.session_state.next_sea_contract_row += 1
-            st.session_state.sea_contract_rows.insert(row_index + 1, new_row_id)
-            st.rerun()
-
-    with row_columns[4]:
-        if st.button(
-            "−",
-            key=f"remove_sea_contract_{row_id}",
-            help="Delete contract",
-            disabled=len(st.session_state.sea_contract_rows) == 1,
-        ):
-            st.session_state.sea_contract_rows.remove(row_id)
-            for key in (from_key, to_key, offer_key):
-                st.session_state.pop(key, None)
-            st.rerun()
-
-    if selected_offer_id is not None:
-        sea_contracts.append(offer_by_id[selected_offer_id])
-
-
-st.subheader("Rail")
 
 @st.cache_data(ttl=600)
 def load_rail_contract_options():
@@ -196,124 +69,126 @@ def load_rail_contract_options():
             rail.price_per_container
     """)
 
-rail_contract_data = load_rail_contract_options()
-rail_offers = rail_contract_data.to_dict("records")
-rail_origins = sorted(
-    {offer["ORIGIN_CITY"] for offer in rail_offers if offer["ORIGIN_CITY"]}
+def render_contract_selector(mode, offers, contract_id_column):
+    selected_contracts = []
+    origins = sorted(
+        {offer["ORIGIN_CITY"] for offer in offers if offer["ORIGIN_CITY"]}
+    )
+    origin_column, destination_column, contract_column = st.columns(3)
+
+    with origin_column:
+        st.markdown("**Origin**")
+        selected_origins = []
+        for origin in origins:
+            origin_key = f"{mode}_origin_{origin}"
+            if st.checkbox(origin, key=origin_key):
+                selected_origins.append(origin)
+            else:
+                route_destinations = {
+                    offer["DESTINATION_CITY"]
+                    for offer in offers
+                    if offer["ORIGIN_CITY"] == origin
+                }
+                for destination in route_destinations:
+                    st.session_state.pop(
+                        f"{mode}_destination_{origin}_{destination}", None
+                    )
+                    st.session_state.pop(
+                        f"{mode}_contract_{origin}_{destination}", None
+                    )
+
+    selected_routes = []
+    with destination_column:
+        st.markdown("**Destination**")
+        if not selected_origins:
+            st.caption("Select an origin to see destinations.")
+
+        for origin in selected_origins:
+            destinations = sorted(
+                {
+                    offer["DESTINATION_CITY"]
+                    for offer in offers
+                    if offer["ORIGIN_CITY"] == origin
+                    and offer["DESTINATION_CITY"]
+                }
+            )
+            for destination in destinations:
+                destination_key = f"{mode}_destination_{origin}_{destination}"
+                route_label = f"{origin} → {destination}"
+                if st.checkbox(route_label, key=destination_key):
+                    selected_routes.append((origin, destination))
+                else:
+                    st.session_state.pop(
+                        f"{mode}_contract_{origin}_{destination}", None
+                    )
+
+    with contract_column:
+        st.markdown("**Contract Options**")
+        if not selected_routes:
+            st.caption("Select a destination to see contract options.")
+
+        for origin, destination in selected_routes:
+            matching_offers = [
+                offer
+                for offer in offers
+                if offer["ORIGIN_CITY"] == origin
+                and offer["DESTINATION_CITY"] == destination
+            ]
+            offer_by_id = {
+                offer[contract_id_column]: offer for offer in matching_offers
+            }
+            contract_key = f"{mode}_contract_{origin}_{destination}"
+            selected_contract_id = st.radio(
+                f"{origin} → {destination}",
+                list(offer_by_id),
+                index=None,
+                format_func=lambda contract_id, offers_by_id=offer_by_id: (
+                    f"{int(offers_by_id[contract_id]['QUANTITY'])} containers at "
+                    f"${offers_by_id[contract_id]['PRICE_PER_CONTAINER']:,.2f} each"
+                ),
+                key=contract_key,
+            )
+            if selected_contract_id is not None:
+                selected_contracts.append(offer_by_id[selected_contract_id])
+
+    return selected_contracts
+
+
+sea_offers = load_sea_contract_options().to_dict("records")
+rail_offers = load_rail_contract_options().to_dict("records")
+
+st.subheader("Sea")
+sea_contracts = render_contract_selector(
+    "sea", sea_offers, "SEA_CONTRACT_ID"
 )
-rail_destinations = sorted(
-    {offer["DESTINATION_CITY"] for offer in rail_offers if offer["DESTINATION_CITY"]}
+
+st.divider()
+st.subheader("Rail")
+rail_contracts = render_contract_selector(
+    "rail", rail_offers, "RAIL_CONTRACT_ID"
 )
 
-if "rail_contract_rows" not in st.session_state:
-    st.session_state.rail_contract_rows = [0]
-    st.session_state.next_rail_contract_row = 1
+st.subheader("Selected Contracts")
+all_selected_contracts = [
+    ("Sea", contract) for contract in sea_contracts
+] + [
+    ("Rail", contract) for contract in rail_contracts
+]
 
-def selected_rail_routes(excluded_row_id):
-    routes = set()
-    for contract_row_id in st.session_state.rail_contract_rows:
-        if contract_row_id == excluded_row_id:
-            continue
-        origin = st.session_state.get(f"rail_from_{contract_row_id}")
-        destination = st.session_state.get(f"rail_to_{contract_row_id}")
-        if origin and destination:
-            routes.add((origin, destination))
-    return routes
-
-rail_contracts = []
-
-for row_index, row_id in enumerate(list(st.session_state.rail_contract_rows)):
-    from_key = f"rail_from_{row_id}"
-    to_key = f"rail_to_{row_id}"
-    offer_key = f"rail_for_{row_id}"
-    routes_in_other_rows = selected_rail_routes(row_id)
-
-    selected_destination = st.session_state.get(to_key)
-    available_origins = [
-        origin
-        for origin in rail_origins
-        if origin != selected_destination
-        and (origin, selected_destination) not in routes_in_other_rows
-    ]
-    if st.session_state.get(from_key) not in available_origins:
-        st.session_state.pop(from_key, None)
-
-    row_columns = st.columns([3, 3, 4, 1, 1])
-
-    with row_columns[0]:
-        selected_origin = st.selectbox(
-            "From",
-            available_origins,
-            index=None,
-            placeholder="Select origin",
-            key=from_key,
+if all_selected_contracts:
+    total_committed = 0
+    for mode_name, contract in all_selected_contracts:
+        quantity = int(contract["QUANTITY"])
+        contract_cost = quantity * contract["PRICE_PER_CONTAINER"]
+        total_committed += contract_cost
+        st.write(
+            f"**{mode_name}:** {quantity} containers from "
+            f"{contract['ORIGIN_CITY']} to {contract['DESTINATION_CITY']} "
+            f"(${contract_cost:,.2f})"
         )
-
-    available_destinations = [
-        destination
-        for destination in rail_destinations
-        if destination != selected_origin
-        and (selected_origin, destination) not in routes_in_other_rows
-    ]
-    if st.session_state.get(to_key) not in available_destinations:
-        st.session_state.pop(to_key, None)
-
-    with row_columns[1]:
-        selected_destination = st.selectbox(
-            "To",
-            available_destinations,
-            index=None,
-            placeholder="Select destination",
-            key=to_key,
-        )
-
-    matching_offers = [
-        offer
-        for offer in rail_offers
-        if offer["ORIGIN_CITY"] == selected_origin
-        and offer["DESTINATION_CITY"] == selected_destination
-    ]
-    offer_by_id = {
-        offer["RAIL_CONTRACT_ID"]: offer for offer in matching_offers
-    }
-    if st.session_state.get(offer_key) not in offer_by_id:
-        st.session_state.pop(offer_key, None)
-
-    with row_columns[2]:
-        selected_offer_id = st.selectbox(
-            "For",
-            list(offer_by_id),
-            index=None,
-            placeholder="Select terms",
-            format_func=lambda contract_id: (
-                f"{offer_by_id[contract_id]['QUANTITY']} containers for "
-                f"${offer_by_id[contract_id]['PRICE_PER_CONTAINER']:.2f} "
-                "per container"
-            ),
-            key=offer_key,
-        )
-
-    with row_columns[3]:
-        if st.button("＋", key=f"add_rail_contract_{row_id}", help="Add contract"):
-            new_row_id = st.session_state.next_rail_contract_row
-            st.session_state.next_rail_contract_row += 1
-            st.session_state.rail_contract_rows.insert(row_index + 1, new_row_id)
-            st.rerun()
-
-    with row_columns[4]:
-        if st.button(
-            "−",
-            key=f"remove_rail_contract_{row_id}",
-            help="Delete contract",
-            disabled=len(st.session_state.rail_contract_rows) == 1,
-        ):
-            st.session_state.rail_contract_rows.remove(row_id)
-            for key in (from_key, to_key, offer_key):
-                st.session_state.pop(key, None)
-            st.rerun()
-
-    if selected_offer_id is not None:
-        rail_contracts.append(offer_by_id[selected_offer_id])
+    st.metric("Total committed spend", f"${total_committed:,.2f}")
+else:
+    st.info("No contracts selected.")
 
 
 st.header("Build Routes")
