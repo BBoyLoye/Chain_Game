@@ -2,6 +2,9 @@
 import streamlit as st
 # from snowflake.snowpark.functions import col
 
+cnx = st.connection("snowflake")
+session = cnx.session()
+
 # Write directly to the app
 st.title("Come Play the Chain Game!")
 st.header("Welcome to my project! If it's your first time playing, please click the button below.")
@@ -14,12 +17,54 @@ with st.expander("It's my first time"):
     st.write("    1. You can make contracts with freight brokers to transport goods. You should make contracts to save money over paying 'spot rates,' which are often higher. But beware! You risk contracts being bloated, and forcing you to pay for freight services you won't need if demand goes down.")
     st.write("    2. Once your contracts are locked in, you'll be able to navigate REAL TIME spot rates for ocean, rail, and truck cargo to get products where they belong")
     st.write("Your goal is to get products to where they belong for as little cost as possible. Good luck!")
-    
-# You can also add formatting, bold text, or markdown links inside
-st.markdown("**Tip:** Check the sidebar for current freight market rates!")
 
-cnx = st.connection("snowflake")
-session = cnx.session()
+st.header("Demand Projections")
+st.caption(
+    "Each table shows projected unit demand by destination and product "
+    "for one quarter."
+)
+
+@st.cache_data(ttl=600)
+def load_demand_projections():
+    return cnx.query("""
+        SELECT
+            demand.id,
+            demand.period,
+            city.city_name AS location,
+            product.product_name AS product,
+            demand.quantity
+        FROM CHAIN_GAME_DEV.MARTS.FCT_DEMAND_PROJ AS demand
+        LEFT JOIN CHAIN_GAME_DEV.MARTS.DIM_CITIES AS city
+            ON demand.location = city.city_id
+        LEFT JOIN CHAIN_GAME_DEV.MARTS.DIM_PRODUCTS AS product
+            ON demand.product = product.sku
+        ORDER BY
+            demand.period,
+            city.city_name,
+            product.product_name
+    """)
+
+demand_projections = load_demand_projections()
+demand_periods = sorted(demand_projections["PERIOD"].dropna().unique())
+demand_columns = st.columns(2)
+
+for period_index, period in enumerate(demand_periods):
+    period_demand = demand_projections[
+        demand_projections["PERIOD"] == period
+    ]
+    demand_matrix = period_demand.pivot_table(
+        index="LOCATION",
+        columns="PRODUCT",
+        values="QUANTITY",
+        aggfunc="sum",
+        fill_value=0,
+    )
+    demand_matrix.index.name = "Location"
+    demand_matrix.columns.name = "Product"
+
+    with demand_columns[period_index % len(demand_columns)]:
+        st.subheader(f"Quarter {int(period)}")
+        st.dataframe(demand_matrix, use_container_width=True)
 
 st.header("Contract Selection")
 
@@ -191,5 +236,10 @@ else:
     st.info("No contracts selected.")
 
 
-st.header("Build Routes")
+st.header("Delivery to last mile destinations")
+st.write("With contracts in place, the remaining costs are calculated automatically.")
+st.write("Goods that were delivered by sea or rail will be delivered to their local store first by default to save costs. Goods in excess of what a local store will need will be taken to the nearest store by truck.")
+
+
+
 st.write(f"Streamlit Version: {st.__version__}")
