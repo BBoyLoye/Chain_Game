@@ -114,6 +114,29 @@ def load_rail_contract_options():
             rail.price_per_container
     """)
 
+@st.cache_data(ttl=600)
+def load_sea_spot_options():
+    return cnx.query("""
+        SELECT
+            spots.period,
+            spots.price,
+            spots.origin,
+            origin_city.city_name AS origin_city,
+            spots.destination,
+            destination_city.city_name AS destination_city
+        FROM CHAIN_GAME_DEV.MARTS.FCT_SPOTS AS spots
+        LEFT JOIN CHAIN_GAME_DEV.MARTS.DIM_CITIES AS origin_city
+            ON spots.origin = origin_city.city_id
+        LEFT JOIN CHAIN_GAME_DEV.MARTS.DIM_CITIES AS destination_city
+            ON spots.destination = destination_city.city_id
+        WHERE
+            spots.method = 1
+            AND destination_city.port = TRUE
+        ORDER BY
+            spots.period,
+            destination_city.city_name
+    """)
+
 def render_contract_selector(mode, offers, contract_id_column):
     selected_contracts = []
     origins = sorted(
@@ -207,6 +230,99 @@ sea_contracts = render_contract_selector(
     "sea", sea_offers, "SEA_CONTRACT_ID"
 )
 
+sea_contract_capacity = sum(
+    int(contract["QUANTITY"]) for contract in sea_contracts
+)
+demand_by_period = {
+    int(period): int(quantity)
+    for period, quantity in demand_projections.groupby("PERIOD")[
+        "QUANTITY"
+    ].sum().items()
+}
+quarters = list(range(1, 9))
+
+st.subheader("Ocean Capacity")
+st.metric("Containers being shipped to the US on contract", sea_contract_capacity)
+capacity_table = {
+    "": ["Total containers on contract", "Containers needed"],
+}
+for quarter in quarters:
+    capacity_table[f"Quarter {quarter}"] = [
+        sea_contract_capacity,
+        demand_by_period.get(quarter, 0),
+    ]
+st.dataframe(capacity_table, hide_index=True, use_container_width=True)
+
+sea_spot_offers = load_sea_spot_options().to_dict("records")
+spot_purchases = []
+spot_committed_spend = 0
+
+for quarter in quarters:
+    containers_needed = demand_by_period.get(quarter, 0)
+    capacity_shortfall = max(containers_needed - sea_contract_capacity, 0)
+    if capacity_shortfall == 0:
+        continue
+
+    st.markdown(f"#### Quarter {quarter} spot ocean capacity")
+    st.write(
+        f"You need **{capacity_shortfall:,} additional containers** "
+        "to cover projected demand."
+    )
+    quarter_spot_offers = [
+        offer
+        for offer in sea_spot_offers
+        if int(offer["PERIOD"]) == quarter
+    ]
+
+    if not quarter_spot_offers:
+        st.warning("No ocean spot rates are available for this quarter.")
+        continue
+
+    port_columns = st.columns(len(quarter_spot_offers))
+    quarter_containers_purchased = 0
+    for port_column, offer in zip(port_columns, quarter_spot_offers):
+        destination_id = int(offer["DESTINATION"])
+        price = offer["PRICE"]
+        with port_column:
+            st.markdown(f"**{offer['DESTINATION_CITY']}**")
+            st.caption(f"${price:,.2f} per container")
+            purchased_quantity = st.number_input(
+                "Containers to buy",
+                min_value=0,
+                max_value=capacity_shortfall,
+                step=1,
+                key=f"sea_spot_q{quarter}_destination_{destination_id}",
+            )
+
+        quarter_containers_purchased += purchased_quantity
+        if purchased_quantity:
+            purchase_cost = purchased_quantity * price
+            spot_committed_spend += purchase_cost
+            spot_purchases.append(
+                {
+                    "PERIOD": quarter,
+                    "ORIGIN_CITY": offer["ORIGIN_CITY"],
+                    "DESTINATION_CITY": offer["DESTINATION_CITY"],
+                    "QUANTITY": purchased_quantity,
+                    "PRICE": price,
+                    "COST": purchase_cost,
+                }
+            )
+
+    remaining_shortfall = capacity_shortfall - quarter_containers_purchased
+    if remaining_shortfall > 0:
+        st.warning(
+            f"{remaining_shortfall:,} containers of Quarter {quarter} "
+            "demand are still uncovered."
+        )
+    elif remaining_shortfall < 0:
+        st.warning(
+            f"You selected {-remaining_shortfall:,} more spot containers "
+            f"than Quarter {quarter} requires."
+        )
+    else:
+        st.success(f"Quarter {quarter} demand is fully covered.")
+
 st.divider()
 st.subheader("Rail")
 rail_contracts = render_contract_selector(
@@ -220,7 +336,7 @@ all_selected_contracts = [
     ("Rail", contract) for contract in rail_contracts
 ]
 
-if all_selected_contracts:
+if all_selected_contracts or spot_purchases:
     total_committed = 0
     for mode_name, contract in all_selected_contracts:
         quantity = int(contract["QUANTITY"])
@@ -231,10 +347,17 @@ if all_selected_contracts:
             f"{contract['ORIGIN_CITY']} to {contract['DESTINATION_CITY']} "
             f"(${contract_cost:,.2f})"
         )
+    for purchase in spot_purchases:
+        st.write(
+            f"**Sea spot, Quarter {purchase['PERIOD']}:** "
+            f"{purchase['QUANTITY']} containers from "
+            f"{purchase['ORIGIN_CITY']} to {purchase['DESTINATION_CITY']} "
+            f"(${purchase['COST']:,.2f})"
+        )
+    total_committed += spot_committed_spend
     st.metric("Total committed spend", f"${total_committed:,.2f}")
 else:
     st.info("No contracts selected.")
-
 
 st.header("Delivery to last mile destinations")
 st.write("With contracts in place, the remaining costs are calculated automatically.")
