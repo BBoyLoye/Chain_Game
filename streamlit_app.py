@@ -254,8 +254,6 @@ for quarter in quarters:
 st.dataframe(capacity_table, hide_index=True, use_container_width=True)
 
 sea_spot_offers = load_sea_spot_options().to_dict("records")
-spot_purchases = []
-spot_committed_spend = 0
 
 for quarter in quarters:
     containers_needed = demand_by_period.get(quarter, 0)
@@ -295,19 +293,6 @@ for quarter in quarters:
             )
 
         quarter_containers_purchased += purchased_quantity
-        if purchased_quantity:
-            purchase_cost = purchased_quantity * price
-            spot_committed_spend += purchase_cost
-            spot_purchases.append(
-                {
-                    "PERIOD": quarter,
-                    "ORIGIN_CITY": offer["ORIGIN_CITY"],
-                    "DESTINATION_CITY": offer["DESTINATION_CITY"],
-                    "QUANTITY": purchased_quantity,
-                    "PRICE": price,
-                    "COST": purchase_cost,
-                }
-            )
 
     remaining_shortfall = capacity_shortfall - quarter_containers_purchased
     if remaining_shortfall > 0:
@@ -328,36 +313,6 @@ st.subheader("Rail")
 rail_contracts = render_contract_selector(
     "rail", rail_offers, "RAIL_CONTRACT_ID"
 )
-
-st.subheader("Selected Contracts")
-all_selected_contracts = [
-    ("Sea", contract) for contract in sea_contracts
-] + [
-    ("Rail", contract) for contract in rail_contracts
-]
-
-if all_selected_contracts or spot_purchases:
-    total_committed = 0
-    for mode_name, contract in all_selected_contracts:
-        quantity = int(contract["QUANTITY"])
-        contract_cost = quantity * contract["PRICE_PER_CONTAINER"]
-        total_committed += contract_cost
-        st.write(
-            f"**{mode_name}:** {quantity} containers from "
-            f"{contract['ORIGIN_CITY']} to {contract['DESTINATION_CITY']} "
-            f"(${contract_cost:,.2f})"
-        )
-    for purchase in spot_purchases:
-        st.write(
-            f"**Sea spot, Quarter {purchase['PERIOD']}:** "
-            f"{purchase['QUANTITY']} containers from "
-            f"{purchase['ORIGIN_CITY']} to {purchase['DESTINATION_CITY']} "
-            f"(${purchase['COST']:,.2f})"
-        )
-    total_committed += spot_committed_spend
-    st.metric("Total committed spend", f"${total_committed:,.2f}")
-else:
-    st.info("No contracts selected.")
 
 st.header("Delivery to last mile destinations")
 st.write("With contracts in place, the remaining costs are calculated automatically.")
