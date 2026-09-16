@@ -137,6 +137,31 @@ def load_sea_spot_options():
             destination_city.city_name
     """)
 
+@st.cache_data(ttl=600)
+def load_rail_spot_options():
+    return cnx.query("""
+        SELECT
+            spots.period,
+            spots.price,
+            spots.origin,
+            origin_city.city_name AS origin_city,
+            spots.destination,
+            destination_city.city_name AS destination_city
+        FROM CHAIN_GAME_DEV.MARTS.FCT_SPOTS AS spots
+        LEFT JOIN CHAIN_GAME_DEV.MARTS.DIM_CITIES AS origin_city
+            ON spots.origin = origin_city.city_id
+        LEFT JOIN CHAIN_GAME_DEV.MARTS.DIM_CITIES AS destination_city
+            ON spots.destination = destination_city.city_id
+        WHERE
+            spots.method = 2
+            AND origin_city.rail = TRUE
+            AND destination_city.rail = TRUE
+        ORDER BY
+            spots.period,
+            origin_city.city_name,
+            destination_city.city_name
+    """)
+
 def render_contract_selector(mode, offers, contract_id_column):
     selected_contracts = []
     origins = sorted(
@@ -314,10 +339,44 @@ rail_contracts = render_contract_selector(
     "rail", rail_offers, "RAIL_CONTRACT_ID"
 )
 
+st.subheader("Rail Spot Rates")
+st.caption(
+    "Buy additional rail capacity at the current spot rate for each quarter."
+)
+rail_spot_offers = load_rail_spot_options().to_dict("records")
+
+for quarter in quarters:
+    st.markdown(f"#### Quarter {quarter}")
+    quarter_rail_spot_offers = [
+        offer
+        for offer in rail_spot_offers
+        if int(offer["PERIOD"]) == quarter
+    ]
+
+    if not quarter_rail_spot_offers:
+        st.warning("No rail spot rates are available for this quarter.")
+        continue
+
+    route_columns = st.columns(min(3, len(quarter_rail_spot_offers)))
+    for route_index, offer in enumerate(quarter_rail_spot_offers):
+        origin_id = int(offer["ORIGIN"])
+        destination_id = int(offer["DESTINATION"])
+        price = offer["PRICE"]
+        with route_columns[route_index % len(route_columns)]:
+            st.markdown(
+                f"**{offer['ORIGIN_CITY']} → {offer['DESTINATION_CITY']}**"
+            )
+            st.caption(f"${price:,.2f} per container")
+            st.number_input(
+                "Containers to buy",
+                min_value=0,
+                step=1,
+                key=(
+                    f"rail_spot_q{quarter}_origin_{origin_id}"
+                    f"_destination_{destination_id}"
+                ),
+            )
+
 st.header("Delivery to last mile destinations")
 st.write("With contracts in place, the remaining costs are calculated automatically.")
-st.write("Goods that were delivered by sea or rail will be delivered to their local store first by default to save costs. Goods in excess of what a local store will need will be taken to the nearest store by truck.")
-
-
-
-st.write(f"Streamlit Version: {st.__version__}")
+st.write("Goods that were delivered by sea or rail will be delivered to their local store first by default to save costs. Goods in excess of what a local store will need will be taken to the nearest store by truck. Here's a summary of the remaining demand to fulfill:")
